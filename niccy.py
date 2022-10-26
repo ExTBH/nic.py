@@ -1,9 +1,12 @@
 import json
 import os
+import shutil
 import sys
 import re
+import subprocess
+import cmd
 #import colorama
-from typing import List
+from typing import List, Union
 from cookiecutter.main import cookiecutter
 from glob import glob
 
@@ -23,9 +26,11 @@ class Consts:
     SPRINGBOARD_PACKAGE = 'com.apple.springboard'
     SPRINGBOARD_PROCESS = 'SpringBoard'
     FILTER_PROMPT = f'MobileSubstrate Bundle filter [{SPRINGBOARD_PACKAGE}]: '
+    FILTER_SSH_PROMPT = 'Select a MobileSubstrate Bundle filter (0-%s) ' \
+        f'or enter one [{SPRINGBOARD_PACKAGE}]: '
     INVALID_BUNDLE = 'Invaid filter(%s), only Letters, Number and [+.-] allowed'
-    PROCESSES_PROMPT = f'List of applications to terminate upon installation '\
-        '(space-separated, \'-\' for none) [{SPRINGBOARD_PROCESS}]: '
+    PROCESSES_PROMPT = 'List of applications to terminate upon installation '\
+        f'(space-separated, \'-\' for none) [{SPRINGBOARD_PROCESS}]: '
 
 class Regex:
     filter_project_name = '[^a-zA-Z0-9+.-]'
@@ -47,19 +52,77 @@ class NIC:
         print(Consts.NIC + '\n' + '-' * len(Consts.NIC))
         self.__load_templates()
 
+    @staticmethod
+    def _bundles_over_ssh() -> str:
+        if os.environ.get('THEOS_DEVICE_IP'):
+            print("Attempting to get Bundle ID's over SSH..")
+            user = 'root'
+            host = os.environ['THEOS_DEVICE_IP']
+            port = '22'
+            if os.environ.get('THEOS_DEVICE_USER'):
+                user = os.environ['THEOS_DEVICE_USER']
+            if os.environ.get('THEOS_DEVICE_PORT'):
+                port = os.environ['THEOS_DEVICE_PORT']
+            
+            session = subprocess.run(['ssh', f'{user}@{host}','-p',port, 'uicache', '-l'], capture_output=True, text=True)
+            if session.returncode != 0:
+                print(session.stderr)
+                print('Going back to manual mode')
+                return ''
+            
+            entries = session.stdout.splitlines()
+            raw_bundles = []
+            for entry in entries:
+                bundle, path = entry.split(' : ')
+                raw_bundles.append(bundle)
+            
+            raw_bundles = sorted(raw_bundles)
+            indexed_bundles, bundles_path = [], []# paths could be used later to fill the kill rule
+            for index, bundle in enumerate(raw_bundles):
+                indexed_bundles.append(f'[{index}] {bundle}')
+            
+            cmd.Cmd().columnize(indexed_bundles,
+                displaywidth=shutil.get_terminal_size().columns)
+            
+            failed_attempts = 0
+            while failed_attempts < 2:
+                choice = input(Consts.FILTER_SSH_PROMPT % (len(raw_bundles) -1))
+                if not choice:
+                    return Consts.SPRINGBOARD_PACKAGE
+                try:
+                    return raw_bundles[int(choice)]
+                except IndexError:
+                    print(f'({choice}) is out of range, maximum is ({len(raw_bundles)-1})')
+                    failed_attempts +=1
+                except ValueError:
+                    if re.match(Regex.package_name, choice):
+                        return choice
+                    else:
+                        print(Consts.INVALID_BUNDLE % choice)
+                        failed_attempts += 1
+            sys.exit('Failed attempts exceeded, exiting...')
+
+        return ''
 
     @staticmethod
-    def __bundle_filter() -> str:
-        filter = input(Consts.FILTER_PROMPT)
-        # get installed apps with ssh
-        if filter == '':
-            return Consts.SPRINGBOARD_PACKAGE
-        if re.match(Regex.package_name, filter) == None:
-            sys.exit(Consts.INVALID_BUNDLE % filter)
-        return filter
+    def _bundle_filter() -> str:
+        ssh_filter = NIC._bundles_over_ssh()
+        if ssh_filter:
+            return ssh_filter
+        failed_attempts = 0
+        while failed_attempts < 2:
+            choice = input(Consts.FILTER_PROMPT)
+            if re.match(Regex.package_name, choice):
+                return choice
+            elif not choice:
+                return Consts.SPRINGBOARD_PACKAGE
+            else:
+                print(Consts.INVALID_BUNDLE % choice)
+                failed_attempts += 1
+        sys.exit('Failed attempts exceeded, exiting...')
 
     @staticmethod
-    def __process_kill() -> str:
+    def _kill_rule() -> str:
         apps = input(Consts.PROCESSES_PROMPT)
         if apps == '-':
             return ''
@@ -77,14 +140,14 @@ class NIC:
         if len(templates) < 1:
             print(Consts.NO_TEMPLATES)
             print('-' * len(Consts.NIC))
-            os.system('$THEOS/bin/nic.pl')
+            subprocess.Popen('$THEOS/bin/nic.pl', shell=True).communicate()
             sys.exit(0)
 
 
-        for template in enumerate(templates):
-            with open(f'{template[1]}/template.json', 'r') as f:
+        for index, path in enumerate(templates):
+            with open(f'{path}/template.json', 'r') as f:
                 config = json.load(f)
-            print(f'[{template[0]}] {config.get("name")}')
+            print(f'[{index}] {config.get("name")}')
 
         try:
             selected_template = int(input(Consts.TEMPLATE_PROMPT))
@@ -108,8 +171,8 @@ class NIC:
         if author == '':
             author = os.getlogin().title()
         
-        filter = self.__bundle_filter()
-        kill_rule = self.__process_kill()
+        filter = self._bundle_filter()
+        kill_rule = self._kill_rule()
 
         cookiecutter(templates[selected_template], extra_context={
             "PACKAGENAME": package_name,
@@ -118,7 +181,7 @@ class NIC:
             "USER": author,
             "FILTER": filter,
             "KILL_RULE": kill_rule
-        }, no_input=True)
+        }, no_input=False)
 
 
 
