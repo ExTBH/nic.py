@@ -1,3 +1,4 @@
+from enum import Enum
 import json
 import os
 import shutil
@@ -34,7 +35,8 @@ class Consts:
 
 class Regex:
     filter_project_name = '[^a-zA-Z0-9+.-]'
-    package_name = '^([a-zA-Z0-9\\+\\-]+\\.)+[a-zA-Z0-9\\+\\-]+$'
+    bundle = '^([a-zA-Z0-9\\+\\-]+\\.)+[a-zA-Z0-9\\+\\-]+$'
+
 
 
 class NIC:
@@ -95,7 +97,7 @@ class NIC:
                     print(f'({choice}) is out of range, maximum is ({len(raw_bundles)-1})')
                     failed_attempts +=1
                 except ValueError:
-                    if re.match(Regex.package_name, choice):
+                    if re.match(Regex.bundle, choice):
                         return choice
                     else:
                         print(Consts.INVALID_BUNDLE % choice)
@@ -112,7 +114,7 @@ class NIC:
         failed_attempts = 0
         while failed_attempts < 2:
             choice = input(Consts.FILTER_PROMPT)
-            if re.match(Regex.package_name, choice):
+            if re.match(Regex.bundle, choice):
                 return choice
             elif not choice:
                 return Consts.SPRINGBOARD_PACKAGE
@@ -164,7 +166,7 @@ class NIC:
         package_name = input(Consts.PACKAGE_NAME_PROMPT % clean_project_name)
         if package_name == '':
             package_name = f'com.yourcompany.{clean_project_name}'
-        if re.match(Regex.package_name, package_name) == None:
+        if re.match(Regex.bundle, package_name) == None:
             sys.exit(Consts.INVALID_BUNDLE % package_name)
 
         author = input(f'Author/Maintainer [{os.getlogin().title()}]: ')
@@ -189,3 +191,4 @@ try:
     nic = NIC()
 except KeyboardInterrupt:
     sys.exit('\n')
+
