@@ -1,5 +1,6 @@
 from enum import Enum
 import json, os, subprocess, re, shutil
+from pathlib import Path
 from typing import Dict, List, Tuple
 from glob import glob
 from prompt_toolkit.validation import Validator, ValidationError
@@ -46,23 +47,23 @@ class BundleCompleter(Completer):
                 yield Completion(bundle, start_position=-len(document.text))
 
 
-def load_templates(templates_dir: str) -> Tuple[List[str], List[str]]:
-    templates_folders = glob(f"{templates_dir}/*.nic3", recursive=False)
+def load_templates(templates_dir: Path) -> Tuple[List[str], List[str]]:
+    templates_folders = glob((templates_dir / '*.nic3').as_posix(), recursive=False)
     if len(templates_folders) < 1:
         raise NoTemplates(f"Niccy can't find templates in [{templates_dir}]")
     
     templates_names = []
     for index, template in enumerate(templates_folders):
-        template_name = get_template_name(template)
+        template_name = get_template_name(Path(template))
         if template_name:
             templates_names.append(template_name)
         else:
             templates_folders.pop(index) #broken template?
     return (templates_names, templates_folders)
 
-def get_template_name(path: str) -> str:
+def get_template_name(path: Path) -> str:
     try:
-        with open(path + '/template.json', 'r') as f:
+        with open(path / 'template.json', 'r') as f:
             conf = json.load(f)
             return conf.get('template_name')
     except OSError:
@@ -104,9 +105,9 @@ def set_prompt_keys_for_type(keys: Dict, prompt: Dict, bundles: List = []) -> Di
     return keys
 
 
-def prompts_for_template(path: str, bundles: List = []) -> List:
+def prompts_for_template(path: Path, bundles: List = []) -> List:
     try:
-        with open(path + '/template.json', 'r') as f:
+        with open(path / 'template.json', 'r') as f:
             conf = json.load(f)
             prompts = []
             for prompt in conf['prompts']:
@@ -139,7 +140,7 @@ def bundles_over_ssh(host = os.environ['THEOS_DEVICE_IP'], user = 'root', port =
     if os.environ.get('THEOS_DEVICE_PORT'):
         port = os.environ['THEOS_DEVICE_PORT']
 
-    session = subprocess.run(['ssh', f'{user}@{host}', f'-p {port}', 'uicache', '-l'], capture_output=True, text=True)
+    session = subprocess.run(['ssh', f'{user}@{host}', '-p', port, 'uicache', '-l'], capture_output=True, text=True)
     if session.returncode != 0:
         print(session.stderr)
         return []
@@ -148,22 +149,20 @@ def bundles_over_ssh(host = os.environ['THEOS_DEVICE_IP'], user = 'root', port =
     for entry in entries:
         bundle, path = entry.split(' : ')
         raw_bundles.append(bundle)
-    
-    raw_bundles = sorted(raw_bundles)
+
     return raw_bundles
 
-# generating a temporary template directory becuase cookiecutter wont work with a config path
-def build_cc_project(answers: Dict, template_path: str) -> None:
-    with TemporaryDirectory() as dir:
+def build_cc_project(answers: Dict, template_path: Path) -> None:
+    with TemporaryDirectory() as temp_dir:
         answers['CLEAN_PROJECT_NAME'] = re.sub(Regex.filter_project_name, '', answers['FULL_PROJECT_NAME'])
+        dest_dir = Path(temp_dir) / 'dest'
+        shutil.copytree(template_path, dest_dir)
 
-        shutil.copytree(template_path, dir, dirs_exist_ok=True)
-        with open(dir+'/cookiecutter.json', 'w+') as config:
-            config.write(json.dumps(answers))
-        cookiecutter(dir, no_input=True)
+        config_path = Path(dest_dir) / 'cookiecutter.json'
+        config_path.write_text(json.dumps(answers))
+        cookiecutter(dest_dir.as_posix(), no_input=True)
 
-
-def theos_env() -> str:
+def theos_env() -> Path:
     if os.environ.get('THEOS'):
-        return os.environ['THEOS']
+        return Path(os.environ['THEOS'])
     raise NoTheosEnv
