@@ -1,17 +1,14 @@
+from dataclasses import dataclass
 from enum import Enum
 import json, os, subprocess, re, shutil
 from pathlib import Path
-from typing import Dict, List, Tuple
-from glob import glob
+from typing import Any, Dict, List, Optional, Type
 from prompt_toolkit.validation import Validator, ValidationError
 from prompt_toolkit.completion import Completer, Completion
 from tempfile import TemporaryDirectory
 from cookiecutter.main import cookiecutter
 
 class NoTemplates(Exception):
-    pass
-
-class NoTheosEnv(Exception):
     pass
 
 class Regex:
@@ -27,9 +24,62 @@ class PromptsTypes(Enum):
     KILL_PROCESS = 'KILL_PROCESS'
     AUTHOR = 'AUTHOR'
 
+@dataclass
+class TemplatePrompt:
+    type: PromptsTypes
+    jinja_tag: str
+    description: Optional[str]
+    required: bool
+    default: Optional[str]
+    hidden: bool = False
+    validate: Optional[Type[Validator]] = None # subclasses of Validator
+    completer: Optional[Any] = None
 
-class BundleValidator(Validator):
+    def __post_init__(self) -> None:
+        if self.type == PromptsTypes.BUNDLE_ID.value:
+            self.validate = BundleValidator
+            self.completer = BundleCompleter(bundles_over_ssh())
+            if not self.description:
+                self.description = 'Tweak Bundle ID'
+
+        elif self.type == PromptsTypes.BUNDLE_FILTER.value:
+            self.validate = BundleValidator
+            if not self.description:
+                self.description = 'MobileSubstrate Filter'
+        
+        if self.required and not self.validate:
+            self.validate = BaseValidator
+
+    def cc_dict(self) -> Dict:
+        cc_dict = {
+            'type': 'input',
+            'name': self.jinja_tag,
+            'message': self.description,
+        }
+        # Jinja Hates `None` values
+        if self.default:
+            cc_dict['default'] = self.default
+        if self.validate:
+            cc_dict['validate'] = self.validate
+        if self.completer:
+            cc_dict['completer'] = self.completer
+
+        return cc_dict
+
+
+
+class BaseValidator(Validator):
     def validate(self, document) -> None:
+        # Just to Validate for spaces and such 
+        if len(document.text.strip(' ')) < 1:
+            raise ValidationError(
+                message="Required Field, Can't be Empty",
+                cursor_position=len(document.text)
+            )
+
+class BundleValidator(BaseValidator):
+    def validate(self, document) -> None:
+        super().validate(document)
         ok = re.match(Regex.bundle, document.text)
         if not ok:
             raise ValidationError(
@@ -38,7 +88,7 @@ class BundleValidator(Validator):
             )
 
 class BundleCompleter(Completer):
-    def __init__(self, bundles: List = []) -> None:
+    def __init__(self, bundles: List) -> None:
         super().__init__()
         self.bundles = bundles
     def get_completions(self, document, complete_event):
@@ -47,92 +97,40 @@ class BundleCompleter(Completer):
                 yield Completion(bundle, start_position=-len(document.text))
 
 
-def load_templates(templates_dir: Path) -> Tuple[List[str], List[str]]:
-    templates_folders = glob((templates_dir / '*.nic3').as_posix(), recursive=False)
+def load_templates(templates_dir: Path) -> Dict[str, Dict[str, Any]]:
+    templates_folders = list(templates_dir.glob('*.nic3'))
     if len(templates_folders) < 1:
         raise NoTemplates(f"Niccy can't find templates in [{templates_dir}]")
-    
-    templates_names = []
-    for index, template in enumerate(templates_folders):
-        template_name = get_template_name(Path(template))
-        if template_name:
-            templates_names.append(template_name)
-        else:
-            templates_folders.pop(index) #broken template?
-    return (templates_names, templates_folders)
 
-def get_template_name(path: Path) -> str:
+    templates = {}
+    for template_dir in templates_folders:
+        template = load_template(template_dir)
+        if template:
+            templates[template['template_name']] = template
+            templates[template['template_name']]['path'] = template_dir
+    return templates
+
+def load_template(path: Path) -> Optional[Dict]:
+    template_path = path / 'template.json'
     try:
-        with open(path / 'template.json', 'r') as f:
-            conf = json.load(f)
-            return conf.get('template_name')
+        return json.loads(template_path.read_bytes())
     except OSError:
-        return ''
+        return None
+
+def prompts_for_template2(template: Dict[str, Any], bundles: List = []) -> List[Dict]:
+    prompts: List[Dict] = []
+    for prompt in template['prompts']:
+        prompt_keys = TemplatePrompt(
+            type = prompt['type'],
+            jinja_tag = prompt['jinja_tag'],
+            description = prompt['description'],
+            required = prompt['required'],
+            default = prompt['default'],
+            )
+        prompts.append(prompt_keys.cc_dict())
+    return prompts
 
 
-
-def set_prompt_keys_for_type(keys: Dict, prompt: Dict, bundles: List = []) -> Dict:
-    if prompt['type'] == PromptsTypes.FULL_PROJECT_NAME.value:
-        keys['type'] = 'input'
-        if not prompt.get('description'):
-            keys['message'] = 'Enter a Project Name:'
-
-    elif prompt['type'] == PromptsTypes.BUNDLE_ID.value:
-        keys['validate'] = BundleValidator
-        if not prompt.get('description'):
-            keys['message'] = 'Enter a Bundle ID:'
-        keys['default'] = lambda answers: f"com.yourcompany.{re.sub(Regex.filter_project_name, '', answers['FULL_PROJECT_NAME'])}"
-    
-    elif prompt['type'] == PromptsTypes.BUNDLE_FILTER.value:
-        keys['validate'] = BundleValidator
-        keys['completer'] = BundleCompleter(bundles)
-        if not prompt.get('description'):
-            keys['message'] = 'Enter a MobileSubstrate Filter:'
-
-    elif prompt['type'] == PromptsTypes.KILL_PROCESS.value:
-        if not prompt.get('description'):
-            keys['message'] = 'Enter Applications to terminate (space-separated, empty for none):'
-
-    elif prompt['type'] == PromptsTypes.AUTHOR.value:
-        if not prompt.get('description'):
-            keys['message'] = 'Enter Auther/Maintainer Name:'
-        if not prompt.get('default'):
-            keys['default'] = os.getlogin().title()
-    
-    elif prompt['type'] == 'list':
-        keys['type'] = 'list'
-        keys['choices'] = prompt['choices']
-    return keys
-
-
-def prompts_for_template(path: Path, bundles: List = []) -> List:
-    try:
-        with open(path / 'template.json', 'r') as f:
-            conf = json.load(f)
-            prompts = []
-            for prompt in conf['prompts']:
-                keys = {}
-
-                keys['name'] = prompt['jinja_tag']
-
-                if prompt.get('description'):
-                    keys['message'] = prompt['description']
-
-                if prompt.get('default'):
-                    keys['default'] = prompt['default']
-                
-                if prompt.get('required'):
-                    keys['validate'] = lambda val: val.strip() != '' or 'Required field'  
-                
-                keys = set_prompt_keys_for_type(keys, prompt, bundles)
-
-                if not keys.get('type'):
-                    keys['type'] = 'input'
-                prompts.append(keys)
-
-            return prompts
-    except OSError:
-        return []
 
 def bundles_over_ssh(host = os.environ['THEOS_DEVICE_IP'], user = 'root', port = '22') -> List[str]:
     if os.environ.get('THEOS_DEVICE_USER'):
@@ -162,7 +160,15 @@ def build_cc_project(answers: Dict, template_path: Path) -> None:
         config_path.write_text(json.dumps(answers))
         cookiecutter(dest_dir.as_posix(), no_input=True)
 
+
+def process_kill_filter(text) -> Optional[list[str]]:
+    if not text:
+        return None
+    splited = text.split(' ')
+    print(splited)
+    return splited
+
 def theos_env() -> Path:
     if os.environ.get('THEOS'):
         return Path(os.environ['THEOS'])
-    raise NoTheosEnv
+    raise EnvironmentError
