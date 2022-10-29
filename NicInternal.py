@@ -117,7 +117,7 @@ def load_template(path: Path) -> Optional[Dict]:
     except OSError:
         return None
 
-def prompts_for_template2(template: Dict[str, Any], bundles: List = []) -> List[Dict]:
+def prompts_for_template2(template: Dict[str, Any]) -> List[Dict]:
     prompts: List[Dict] = []
     for prompt in template['prompts']:
         prompt_keys = TemplatePrompt(
@@ -160,13 +160,6 @@ def build_cc_project(answers: Dict, template_path: Path) -> None:
         config_path.write_text(json.dumps(answers))
         cookiecutter(dest_dir.as_posix(), no_input=True)
 
-
-def process_kill_filter(text) -> Optional[list[str]]:
-    if not text:
-        return None
-    splited = text.split(' ')
-    print(splited)
-    return splited
 
 def theos_env() -> Path:
     if os.environ.get('THEOS'):

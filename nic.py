@@ -1,7 +1,5 @@
-import os
 from pathlib import Path
 from PyInquirer.prompt import prompt
-from dataclasses import dataclass, asdict
 import NicInternal
 
 theos = NicInternal.theos_env()
@@ -17,20 +15,11 @@ template_selection = {
     'choices': templates
 }
 
-
 template = prompt(template_selection)
 
-
-bundles = []
-# if os.environ.get("THEOS_DEVICE_IP"):
-#     bundles = NicInternal.bundles_over_ssh('192.168.100.3')
-
-
-prompts = NicInternal.prompts_for_template2(templates[template['name']], bundles)
+prompts = NicInternal.prompts_for_template2(templates[template['name']])
 
 answers = prompt(prompts)
 
 path: Path = templates[template['name']]['path']
 cc_config = NicInternal.build_cc_project(answers, path)
-
-print(answers)
