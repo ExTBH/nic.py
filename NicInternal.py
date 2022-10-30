@@ -40,15 +40,16 @@ class TemplatePrompt:
             self.validate = BundleValidator
             self.completer = BundleCompleter(bundles_over_ssh())
             if not self.description:
-                self.description = 'Bundle ID for your Tweak:'
+                self.description = 'Bundle ID for your Tweak'
 
         elif self.type == PromptsTypes.BUNDLE_FILTER:
             self.validate = BundleValidator
             if not self.description:
-                self.description = 'MobileSubstrate Filter to hook against:'
+                self.description = 'MobileSubstrate Filter to hook against'
+
         elif self.jinja_tag == 'KILL_PROCESS':
             if not self.description:
-                'Applications to Terminate upon installation(space-separated):'
+                self.description = 'Applications to Terminate upon installation(space-separated)'
         
         if self.required and not self.validate:
             self.validate = BaseValidator
@@ -162,7 +163,7 @@ def bundles_over_ssh(host = os.environ['THEOS_DEVICE_IP'], user = 'root', port =
     if session.returncode != 0:
         print(f'{Fore.YELLOW}{session.stderr}{Fore.RESET}')
         return []
-    entries, paths = session.stdout.splitlines()
+    entries = session.stdout.splitlines()
     raw_bundles = []
     for entry in entries:
         bundle = entry.split(' : ')[0]

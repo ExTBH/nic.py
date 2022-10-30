@@ -13,14 +13,14 @@
       {
         "type": "STRING",
         "jinja_tag": "FULL_PROJECT_NAME",
-        "description": "Your Project Name",
+        "description": "Project Name",
         "required": true,
         "default": null
       },
       {
         "type": "BUNDLE_ID",
         "jinja_tag": "BUNDLE_ID",
-        "description": "bundle ID",
+        "description": null,
         "required": true,
         "default": null
       },
@@ -34,14 +34,14 @@
       {
         "type": "BUNDLE_FILTER",
         "jinja_tag": "BUNDLE_FILTER",
-        "description": "MobileSubstrate Bundle Filter",
+        "description": null,
         "required": true,
         "default": "com.apple.springboard"
       },
       {
         "type": "STRING",
         "jinja_tag": "KILL_PROCESS",
-        "description": "Apps to kill",
+        "description": null,
         "required": false,
         "default": "SpringBoard"
       }
