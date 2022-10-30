@@ -17,13 +17,11 @@ class Regex:
 
 
 class PromptsTypes(Enum):
-    FULL_PROJECT_NAME = 'input'
-    CLEAN_PROJECT_NAME = 'input'
-    BUNDLE_ID = 'input'
-    BUNDLE_FILTER = 'input'
-    KILL_PROCESS = 'input'
-    AUTHOR = 'input'
-
+    BOOL = "BOOL"
+    INTEGER = "INTEGER"
+    STRING = "STRING"
+    BUNDLE_ID = "BUNDLE_ID"
+    BUNDLE_FILTER = "BUNDLE_FILTER"
 
 @dataclass
 class TemplatePrompt:
@@ -37,9 +35,9 @@ class TemplatePrompt:
     completer: Optional[Completer] = None
 
     def __post_init__(self) -> None:
-        
+        if self.type == PromptsTypes.STRING:
+            print(True)
         if self.type == PromptsTypes.BUNDLE_ID:
-            print('called on',self.type.name, type(self.type))
             self.validate = BundleValidator
             self.completer = BundleCompleter(bundles_over_ssh())
             if not self.description:
@@ -55,6 +53,7 @@ class TemplatePrompt:
 
     @classmethod
     def from_dict(cls, data: Dict) -> "TemplatePrompt":
+        
         return cls(
             type=PromptsTypes[data['type']],
             jinja_tag=data['jinja_tag'],
@@ -65,7 +64,7 @@ class TemplatePrompt:
 
     def to_dict(self) -> Dict:
         cc_dict = {
-            'type': self.type.value,
+            'type': self.cc_type(),
             'name': self.jinja_tag,
             'message': self.description,
         }
@@ -79,6 +78,10 @@ class TemplatePrompt:
 
         return cc_dict
 
+    def cc_type(self) -> str:
+        if self.type in (PromptsTypes.STRING, PromptsTypes.BUNDLE_FILTER, PromptsTypes.BUNDLE_ID):
+            return 'input'
+        return 'input'
 @dataclass
 class Template:
     path: Path
@@ -144,27 +147,6 @@ def load_templates(templates_dir: Path) -> Dict[str, Template]:
             templates[template.template_name] = template
 
     return templates
-
-def load_template(path: Path) -> Optional[Dict]:
-    template_path = path / 'template.json'
-    try:
-        return json.loads(template_path.read_bytes())
-    except OSError:
-        return None
-
-def prompts_for_template(template: Template) -> List[Dict[str, Any]]:
-    prompts: List[Dict] = []
-    for prompt in template.prompts:
-        prompt_keys = TemplatePrompt(
-            type = prompt.type,
-            jinja_tag = prompt.jinja_tag,
-            description = prompt.description,
-            required = prompt.required,
-            default = prompt.default,
-            )
-        prompts.append(prompt_keys.to_dict())
-    return prompts
-
 
 
 def bundles_over_ssh(host = os.environ['THEOS_DEVICE_IP'], user = 'root', port = '22') -> List[str]:

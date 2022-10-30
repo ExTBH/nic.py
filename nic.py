@@ -7,7 +7,6 @@ theos = NicInternal.theos_env()
 templates = NicInternal.load_templates(theos / 'vendor' / 'templates')
 
 
-
 template_selection = {
     'type': 'list',
     'name': 'name',
@@ -17,9 +16,8 @@ template_selection = {
 
 template = prompt(template_selection)
 
-prompts = NicInternal.prompts_for_template(templates[template['name']])
-
-answers = prompt(prompts)
+prompts = templates[template['name']].prompts
+answers = prompt([t.to_dict() for t in prompts])
 
 path = templates[template['name']].path
 cc_config = NicInternal.build_cc_project(answers, path)
