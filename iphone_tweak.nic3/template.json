@@ -1,12 +1,19 @@
 {
-    "template_name": "iphone/tweak[v3]",
+    "template_name": "iphone/tweak",
     "author": "John Cena",
     "source": "https://github.com/theos",
     "prompts":[
       {
-        "type": "FULL_PROJECT_NAME",
+        "type": "STRING",
+        "jinja_tag": "CLEAN_PROJECT_NAME",
+        "description": null,
+        "required": true,
+        "default": null
+      },
+      {
+        "type": "STRING",
         "jinja_tag": "FULL_PROJECT_NAME",
-        "description": "Enter a name",
+        "description": "Your Project Name",
         "required": true,
         "default": null
       },
@@ -18,7 +25,7 @@
         "default": null
       },
       {
-        "type": "AUTHOR",
+        "type": "STRING",
         "jinja_tag": "AUTHOR",
         "description": "Author/Maintainer",
         "required": true,
@@ -27,12 +34,12 @@
       {
         "type": "BUNDLE_FILTER",
         "jinja_tag": "BUNDLE_FILTER",
-        "description": "bundle filter",
+        "description": "MobileSubstrate Bundle Filter",
         "required": true,
         "default": "com.apple.springboard"
       },
       {
-        "type": "KILL_PROCESS",
+        "type": "STRING",
         "jinja_tag": "KILL_PROCESS",
         "description": "Apps to kill",
         "required": false,
@@ -40,3 +47,4 @@
       }
 	]
 }
+

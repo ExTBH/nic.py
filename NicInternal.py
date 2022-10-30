@@ -1,12 +1,14 @@
+from concurrent.futures import thread
 from dataclasses import dataclass
 from enum import Enum
 import json, os, subprocess, re, shutil
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Type
+from typing import Dict, List, Optional, Type
 from prompt_toolkit.validation import Validator, ValidationError
 from prompt_toolkit.completion import Completer, Completion
 from tempfile import TemporaryDirectory
 from cookiecutter.main import cookiecutter
+from colorama import Fore
 
 class NoTemplates(Exception):
     pass
@@ -30,27 +32,28 @@ class TemplatePrompt:
     description: Optional[str]
     required: bool
     default: Optional[str]
-    hidden: bool = False
     validate: Optional[Type[Validator]] = None # subclasses of Validator
     completer: Optional[Completer] = None
 
     def __post_init__(self) -> None:
-        if self.type == PromptsTypes.STRING:
-            print(True)
         if self.type == PromptsTypes.BUNDLE_ID:
             self.validate = BundleValidator
             self.completer = BundleCompleter(bundles_over_ssh())
             if not self.description:
-                self.description = 'Tweak Bundle ID'
+                self.description = 'Bundle ID for your Tweak:'
 
         elif self.type == PromptsTypes.BUNDLE_FILTER:
             self.validate = BundleValidator
             if not self.description:
-                self.description = 'MobileSubstrate Filter'
+                self.description = 'MobileSubstrate Filter to hook against:'
+        elif self.jinja_tag == 'KILL_PROCESS':
+            if not self.description:
+                'Applications to Terminate upon installation(space-separated):'
         
         if self.required and not self.validate:
             self.validate = BaseValidator
-
+        if self.jinja_tag == 'AUTHOR' and not self.default:
+            self.default = os.getlogin().title()
     @classmethod
     def from_dict(cls, data: Dict) -> "TemplatePrompt":
         
@@ -157,19 +160,20 @@ def bundles_over_ssh(host = os.environ['THEOS_DEVICE_IP'], user = 'root', port =
 
     session = subprocess.run(['ssh', f'{user}@{host}', '-p', port, 'uicache', '-l'], capture_output=True, text=True)
     if session.returncode != 0:
-        print(session.stderr)
+        print(f'{Fore.YELLOW}{session.stderr}{Fore.RESET}')
         return []
-    entries = session.stdout.splitlines()
+    entries, paths = session.stdout.splitlines()
     raw_bundles = []
     for entry in entries:
-        bundle, path = entry.split(' : ')
+        bundle = entry.split(' : ')[0]
         raw_bundles.append(bundle)
 
     return raw_bundles
 
-def build_cc_project(answers: Dict, template_path: Path) -> None:
+def build_cc_project(answers: Dict, template_path: Path, clean_name = False) -> None:
     with TemporaryDirectory() as temp_dir:
-        answers['CLEAN_PROJECT_NAME'] = re.sub(Regex.filter_project_name, '', answers['FULL_PROJECT_NAME'])
+        if clean_name:
+            answers['CLEAN_PROJECT_NAME'] = re.sub(Regex.filter_project_name, '', answers['FULL_PROJECT_NAME'])
         dest_dir = Path(temp_dir) / 'dest'
         shutil.copytree(template_path.parent, dest_dir)
 
