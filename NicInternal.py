@@ -17,12 +17,13 @@ class Regex:
 
 
 class PromptsTypes(Enum):
-    FULL_PROJECT_NAME = 'FULL_PROJECT_NAME'
-    CLEAN_PROJECT_NAME = 'CLEAN_PROJECT_NAME'
-    BUNDLE_ID = 'BUNDLE_ID'
-    BUNDLE_FILTER = 'BUNDLE_FILTER'
-    KILL_PROCESS = 'KILL_PROCESS'
-    AUTHOR = 'AUTHOR'
+    FULL_PROJECT_NAME = 'input'
+    CLEAN_PROJECT_NAME = 'input'
+    BUNDLE_ID = 'input'
+    BUNDLE_FILTER = 'input'
+    KILL_PROCESS = 'input'
+    AUTHOR = 'input'
+
 
 @dataclass
 class TemplatePrompt:
@@ -33,16 +34,18 @@ class TemplatePrompt:
     default: Optional[str]
     hidden: bool = False
     validate: Optional[Type[Validator]] = None # subclasses of Validator
-    completer: Optional[Any] = None
+    completer: Optional[Completer] = None
 
     def __post_init__(self) -> None:
-        if self.type == PromptsTypes.BUNDLE_ID.value:
+        
+        if self.type == PromptsTypes.BUNDLE_ID:
+            print('called on',self.type.name, type(self.type))
             self.validate = BundleValidator
             self.completer = BundleCompleter(bundles_over_ssh())
             if not self.description:
                 self.description = 'Tweak Bundle ID'
 
-        elif self.type == PromptsTypes.BUNDLE_FILTER.value:
+        elif self.type == PromptsTypes.BUNDLE_FILTER:
             self.validate = BundleValidator
             if not self.description:
                 self.description = 'MobileSubstrate Filter'
@@ -50,9 +53,19 @@ class TemplatePrompt:
         if self.required and not self.validate:
             self.validate = BaseValidator
 
-    def cc_dict(self) -> Dict:
+    @classmethod
+    def from_dict(cls, data: Dict) -> "TemplatePrompt":
+        return cls(
+            type=PromptsTypes[data['type']],
+            jinja_tag=data['jinja_tag'],
+            description=data['description'],
+            required=data['required'],
+            default=data['default'],
+        )
+
+    def to_dict(self) -> Dict:
         cc_dict = {
-            'type': 'input',
+            'type': self.type.value,
             'name': self.jinja_tag,
             'message': self.description,
         }
@@ -66,7 +79,24 @@ class TemplatePrompt:
 
         return cc_dict
 
+@dataclass
+class Template:
+    path: Path
+    template_name: str
+    author: str
+    source: str
+    prompts: List[TemplatePrompt]
 
+    @classmethod
+    def from_path(cls, path: Path) -> "Template":
+        data = json.loads(path.read_bytes())
+        return cls(
+            path=path,
+            template_name=data["template_name"],
+            author=data["author"],
+            source=data["source"],
+            prompts=[TemplatePrompt.from_dict(d) for d in data["prompts"]],
+        )
 
 class BaseValidator(Validator):
     def validate(self, document) -> None:
@@ -97,17 +127,22 @@ class BundleCompleter(Completer):
                 yield Completion(bundle, start_position=-len(document.text))
 
 
-def load_templates(templates_dir: Path) -> Dict[str, Dict[str, Any]]:
+def load_templates(templates_dir: Path) -> Dict[str, Template]:
     templates_folders = list(templates_dir.glob('*.nic3'))
     if len(templates_folders) < 1:
         raise NoTemplates(f"Niccy can't find templates in [{templates_dir}]")
 
     templates = {}
     for template_dir in templates_folders:
-        template = load_template(template_dir)
-        if template:
-            templates[template['template_name']] = template
-            templates[template['template_name']]['path'] = template_dir
+        try:
+            template = Template.from_path(template_dir / 'template.json')
+
+        except OSError:
+            pass
+
+        else:
+            templates[template.template_name] = template
+
     return templates
 
 def load_template(path: Path) -> Optional[Dict]:
@@ -117,17 +152,17 @@ def load_template(path: Path) -> Optional[Dict]:
     except OSError:
         return None
 
-def prompts_for_template2(template: Dict[str, Any]) -> List[Dict]:
+def prompts_for_template(template: Template) -> List[Dict[str, Any]]:
     prompts: List[Dict] = []
-    for prompt in template['prompts']:
+    for prompt in template.prompts:
         prompt_keys = TemplatePrompt(
-            type = prompt['type'],
-            jinja_tag = prompt['jinja_tag'],
-            description = prompt['description'],
-            required = prompt['required'],
-            default = prompt['default'],
+            type = prompt.type,
+            jinja_tag = prompt.jinja_tag,
+            description = prompt.description,
+            required = prompt.required,
+            default = prompt.default,
             )
-        prompts.append(prompt_keys.cc_dict())
+        prompts.append(prompt_keys.to_dict())
     return prompts
 
 
@@ -154,7 +189,7 @@ def build_cc_project(answers: Dict, template_path: Path) -> None:
     with TemporaryDirectory() as temp_dir:
         answers['CLEAN_PROJECT_NAME'] = re.sub(Regex.filter_project_name, '', answers['FULL_PROJECT_NAME'])
         dest_dir = Path(temp_dir) / 'dest'
-        shutil.copytree(template_path, dest_dir)
+        shutil.copytree(template_path.parent, dest_dir)
 
         config_path = Path(dest_dir) / 'cookiecutter.json'
         config_path.write_text(json.dumps(answers))

@@ -17,9 +17,9 @@ template_selection = {
 
 template = prompt(template_selection)
 
-prompts = NicInternal.prompts_for_template2(templates[template['name']])
+prompts = NicInternal.prompts_for_template(templates[template['name']])
 
 answers = prompt(prompts)
 
-path: Path = templates[template['name']]['path']
+path = templates[template['name']].path
 cc_config = NicInternal.build_cc_project(answers, path)

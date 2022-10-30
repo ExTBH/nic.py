@@ -13,14 +13,14 @@
       {
         "type": "BUNDLE_ID",
         "jinja_tag": "BUNDLE_ID",
-        "description": "bundle if ",
+        "description": "bundle ID",
         "required": true,
         "default": null
       },
       {
         "type": "AUTHOR",
         "jinja_tag": "AUTHOR",
-        "description": "Author",
+        "description": "Author/Maintainer",
         "required": true,
         "default": null
       },
