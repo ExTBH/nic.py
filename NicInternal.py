@@ -9,6 +9,7 @@ from prompt_toolkit.completion import Completer, Completion
 from tempfile import TemporaryDirectory
 from cookiecutter.main import cookiecutter
 from colorama import Fore
+from threading import Thread
 
 class NoTemplates(Exception):
     pass
@@ -38,7 +39,9 @@ class TemplatePrompt:
     def __post_init__(self) -> None:
         if self.type == PromptsTypes.BUNDLE_ID:
             self.validate = BundleValidator
-            self.completer = BundleCompleter(bundles_over_ssh())
+            bundles_thread = BundlesFetcher()
+            bundles_thread.start()
+            self.completer = BundleCompleter(bundles_thread.bundles)
             if not self.description:
                 self.description = 'Bundle ID for your Tweak'
 
@@ -125,7 +128,7 @@ class BundleValidator(BaseValidator):
             )
 
 class BundleCompleter(Completer):
-    def __init__(self, bundles: List) -> None:
+    def __init__(self, bundles: List[str]) -> None:
         super().__init__()
         self.bundles = bundles
     def get_completions(self, document, complete_event):
@@ -133,6 +136,27 @@ class BundleCompleter(Completer):
             if bundle.lower().startswith(document.text.lower()):
                 yield Completion(bundle, start_position=-len(document.text))
 
+
+class BundlesFetcher(Thread):
+    def __init__(self) -> None:
+        super().__init__()
+        self.bundles: List[str] = []
+    
+    def run(self) -> None:
+        if os.environ.get('THEOS_DEVICE_IP'):
+            host = os.environ['THEOS_DEVICE_IP']
+            user = os.environ['THEOS_DEVICE_USER'] if os.environ.get('THEOS_DEVICE_USER') else 'root'
+            port = os.environ['THEOS_DEVICE_PORT'] if os.environ.get('THEOS_DEVICE_PORT') else '22'
+
+            session = subprocess.run(['ssh', f'{user}@{host}', '-p', port, 'uicache', '-l'], capture_output=True, text=True)
+            if session.returncode != 0:
+                print(f'{Fore.YELLOW}{session.stderr}{Fore.RESET}')
+                # stop the thread?
+            else:
+                entries = session.stdout.splitlines()
+                for entry in entries:
+                    bundle = entry.split(' : ')[0]
+                    self.bundles.append(bundle)
 
 def load_templates(templates_dir: Path) -> Dict[str, Template]:
     templates_folders = list(templates_dir.glob('*.nic3'))
@@ -153,23 +177,9 @@ def load_templates(templates_dir: Path) -> Dict[str, Template]:
     return templates
 
 
-def bundles_over_ssh(host = os.environ['THEOS_DEVICE_IP'], user = 'root', port = '22') -> List[str]:
-    if os.environ.get('THEOS_DEVICE_USER'):
-        user = os.environ['THEOS_DEVICE_USER']
-    if os.environ.get('THEOS_DEVICE_PORT'):
-        port = os.environ['THEOS_DEVICE_PORT']
 
-    session = subprocess.run(['ssh', f'{user}@{host}', '-p', port, 'uicache', '-l'], capture_output=True, text=True)
-    if session.returncode != 0:
-        print(f'{Fore.YELLOW}{session.stderr}{Fore.RESET}')
-        return []
-    entries = session.stdout.splitlines()
-    raw_bundles = []
-    for entry in entries:
-        bundle = entry.split(' : ')[0]
-        raw_bundles.append(bundle)
 
-    return raw_bundles
+
 
 def build_cc_project(answers: Dict, template_path: Path, clean_name = False) -> None:
     with TemporaryDirectory() as temp_dir:
