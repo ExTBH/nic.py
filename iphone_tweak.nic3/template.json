@@ -1,0 +1,50 @@
+{
+    "template_name": "iphone/tweak",
+    "author": "John Cena",
+    "source": "https://github.com/theos",
+    "prompts":[
+      {
+        "type": "STRING",
+        "jinja_tag": "CLEAN_PROJECT_NAME",
+        "description": null,
+        "required": true,
+        "default": null
+      },
+      {
+        "type": "STRING",
+        "jinja_tag": "FULL_PROJECT_NAME",
+        "description": "Project Name",
+        "required": true,
+        "default": null
+      },
+      {
+        "type": "BUNDLE_ID",
+        "jinja_tag": "BUNDLE_ID",
+        "description": null,
+        "required": true,
+        "default": null
+      },
+      {
+        "type": "STRING",
+        "jinja_tag": "AUTHOR",
+        "description": "Author/Maintainer",
+        "required": true,
+        "default": null
+      },
+      {
+        "type": "BUNDLE_FILTER",
+        "jinja_tag": "BUNDLE_FILTER",
+        "description": null,
+        "required": true,
+        "default": "com.apple.springboard"
+      },
+      {
+        "type": "STRING",
+        "jinja_tag": "KILL_PROCESS",
+        "description": null,
+        "required": false,
+        "default": "SpringBoard"
+      }
+	]
+}
+

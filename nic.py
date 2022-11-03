@@ -1,32 +1,40 @@
-import os
 from pathlib import Path
 from PyInquirer.prompt import prompt
+from colorama import Fore
 import NicInternal
+
+header = 'NIC 3.0 New Instance Creator'
+print(header)
+print( '-' * len(header))
+print(f'{Fore.GREEN}NIC will attempt to get bundles from your device over SSH, to make it faster use SSH Keys.{Fore.RESET}')
+print( '-' * len(header))
 
 theos = NicInternal.theos_env()
 
-templates, templates_paths = NicInternal.load_templates(theos / 'vendor' / 'templates')
-
+templates = NicInternal.load_templates(theos / 'vendor' / 'templates')
 
 
 template_selection = {
     'type': 'list',
-    'name': 'template',
+    'name': 'name',
     'message': 'Select a Template:',
     'choices': templates
 }
 
-
 template = prompt(template_selection)
 
-bundles = []
-if os.environ.get("THEOS_DEVICE_IP"):
-    bundles = NicInternal.bundles_over_ssh('192.168.100.3')
+prompts = templates[template['name']].prompts
 
-path_for_selection = Path(templates_paths[templates.index(template['template'])])
 
-prompts = NicInternal.prompts_for_template(path_for_selection, bundles)
-answers = prompt(prompts)
+is_clean_name = False
+for p in prompts:
+    if p.jinja_tag == 'CLEAN_PROJECT_NAME':
+        is_clean_name = True
+        prompts.remove(p)
+        break
 
-cc_config = NicInternal.build_cc_project(answers, path_for_selection)
 
+answers = prompt([t.to_dict() for t in prompts])
+
+path = templates[template['name']].path
+cc_config = NicInternal.build_cc_project(answers, path, is_clean_name)

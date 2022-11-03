@@ -1,0 +1,9 @@
+Package: {{cookiecutter.BUNDLE_ID}}
+Name: {{cookiecutter.FULL_PROJECT_NAME}}
+Version: 0.0.1
+Architecture: iphoneos-arm
+Description: An awesome MobileSubstrate tweak!
+Maintainer: {{cookiecutter.AUTHOR}}
+Author: {{cookiecutter.AUTHOR}}
+Section: Tweaks
+Depends: mobilesubstrate (>= 0.9.5000)
